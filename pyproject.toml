@@ -1,0 +1,24 @@
+[project]
+name = "projet-timelaps"
+version = "0.1.0"
+description = "Local web page that plays the SpotRiviere photos as an aligned, crossfaded timelapse"
+requires-python = ">=3.10"
+dependencies = [
+    "flask>=3.1",
+    "pillow>=12",
+]
+
+[project.optional-dependencies]
+# Optional point suggestion on the alignment page (PLAN.md step 2, "later").
+suggest = [
+    "numpy",
+    "opencv-python-headless",
+]
+
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# Flat layout: plain modules at the root, no package directory.
+py-modules = ["catalog", "align", "app"]

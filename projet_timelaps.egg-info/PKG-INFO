@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: projet-timelaps
+Version: 0.1.0
+Summary: Local web page that plays the SpotRiviere photos as an aligned, crossfaded timelapse
+Requires-Python: >=3.10
+Requires-Dist: flask>=3.1
+Requires-Dist: pillow>=12
+Provides-Extra: suggest
+Requires-Dist: numpy; extra == "suggest"
+Requires-Dist: opencv-python-headless; extra == "suggest"

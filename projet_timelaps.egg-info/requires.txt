@@ -1,0 +1,6 @@
+flask>=3.1
+pillow>=12
+
+[suggest]
+numpy
+opencv-python-headless
