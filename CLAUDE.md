@@ -14,7 +14,7 @@ The step-by-step plan, the decisions made, and the "Resume here" notes are in `P
 
 ## Project state
 
-Steps 1 (catalog + web copies) and 2 (alignment, all photos clicked and frames rendered) of `PLAN.md` are done. Steps 3-5 (player, date slider, upload) are not started. No tests yet.
+Steps 1 (catalog + web copies) and 2 (alignment, all photos clicked and frames rendered) of `PLAN.md` are done. Step 3 (player) is built. Steps 4-5 (date slider, upload) are not started. No tests yet.
 
 ## Commands
 
@@ -25,7 +25,7 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # setup (deps in py
 .venv/bin/pre-commit install                                  # once, enables the git hook
 .venv/bin/python catalog.py [--force]   # step 1: cache/catalog.json + web copies/thumbnails
 .venv/bin/python align.py [--force]     # step 2: render aligned frames from data/alignment.json
-.venv/bin/python app.py                 # server: http://localhost:5000/align
+.venv/bin/python app.py                 # server: http://localhost:5000/ (player), /align
 .venv/bin/pre-commit run --all-files    # guard + json/toml/yaml checks + ruff lint/format
 ```
 
@@ -33,8 +33,10 @@ python3 -m venv .venv && .venv/bin/pip install -e ".[dev]"   # setup (deps in py
 
 - `catalog.py`: reads `SpotRiviere/`, writes `cache/catalog.json` (sorted by capture time), `cache/web/<id>.jpg` (1920 px wide) and `cache/thumb/<id>.jpg` (320 px). The id is the filename stem. Only missing or outdated copies are rebuilt. Byte-identical files get `duplicate_of` set (4 today), and everything downstream skips them through `align.timeline()`.
 - `align.py`: the user's clicks live in `data/alignment.json` (original-pixel coordinates; `{"fork","point"}` or `{"skip": true}`). `compute_transforms()` derives each photo's similarity transform. Reference angle = circular mean of the clicked angles. Reference length = the shortest branch (widest shot) shown at `MAX_SCALE` = 1.0 output px per original px, so no photo is ever shown above its real resolution; wide shots extend past the frame edges. Unclicked or skipped photos reuse the nearest aligned photo's clicks. `render_all()` writes 2560x1440 frames to `cache/aligned/` with a blurred, darkened copy of the photo behind; `cache/aligned/rendered.json` records the transform of each frame so only changed frames are re-rendered. Rendering is on demand, because one new click can change the reference and so every frame.
-- `app.py`: Flask. Serves `static/align.html`, `/cache/...`, and JSON APIs: `GET /api/catalog`, `GET /api/alignment`, `PUT /api/alignment/<id>` (body: fork+point, `skip`, or `reset`), `POST/GET /api/render` (render runs in a background thread).
+- `app.py`: Flask. Serves `static/player.html` at `/`, `static/align.html` at `/align`, `/cache/...`, and JSON APIs: `GET /api/catalog`, `GET /api/frames` (rendered frames, mtime-versioned URLs cached as immutable), `GET /api/alignment`, `PUT /api/alignment/<id>` (body: fork+point, `skip`, or `reset`), `POST/GET /api/render` (render runs in a background thread).
 - `static/align.html`: a single page with inline JS/CSS: click the fork, then point 2, with a loupe and a reference panel showing the previous aligned photo's marks. Keyboard-driven (Enter, S, Backspace, Del, arrows, N, V).
+- `static/player.html`: the timelapse player. Two stacked `<img>` layers; the incoming one fades in on top. Settings are kept in localStorage (`player.settings`).
+- Front-end gotcha: never wait on `img.decode()` alone. It never finished in headless Chromium and froze the player; use the `ready()` helper in `player.html` (load event, then decode with a time limit).
 
 ## Data and git rules
 

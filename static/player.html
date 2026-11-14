@@ -1,0 +1,233 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpotRiviere timelapse</title>
+<style>
+  :root {
+    --panel: rgba(18, 20, 23, 0.82); --line: rgba(255, 255, 255, 0.14);
+    --text: #ececec; --muted: #a3a8ae; --accent: #ffc94d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text);
+    font: 14px/1.4 system-ui, sans-serif; overflow: hidden; }
+  #stage { position: fixed; inset: 0; }
+  #stage img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
+    opacity: 0; user-select: none; -webkit-user-drag: none; }
+  #date { position: fixed; left: 20px; top: 16px; font-size: clamp(16px, 2.4vw, 30px); font-weight: 600;
+    text-shadow: 0 1px 4px #000, 0 0 12px #000a; pointer-events: none; font-variant-numeric: tabular-nums; }
+  #date small { display: block; font-size: 0.5em; font-weight: 400; color: #ddd; }
+  #date.hidden { display: none; }
+  #controls { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
+    width: min(860px, calc(100vw - 32px)); background: var(--panel); backdrop-filter: blur(8px);
+    border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; transition: opacity .4s; }
+  body.idle #controls, body.idle #topLinks { opacity: 0; pointer-events: none; }
+  body.idle { cursor: none; }
+  button { background: rgba(255,255,255,.08); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 6px 12px; cursor: pointer; font: inherit; }
+  button:hover { background: rgba(255,255,255,.16); }
+  #play { min-width: 84px; font-weight: 600; }
+  label { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
+  label output { color: var(--text); min-width: 3.4em; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 130px; accent-color: var(--accent); }
+  #counter { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: auto; }
+  #topLinks { position: fixed; right: 16px; top: 14px; display: flex; gap: 8px; transition: opacity .4s; }
+  #topLinks a { color: var(--text); text-decoration: none; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 8px; padding: 5px 10px; }
+  [hidden] { display: none !important; }
+  #empty { position: fixed; inset: 0; display: grid; place-items: center; color: var(--muted); text-align: center; }
+  #help { position: fixed; right: 16px; top: 54px; background: var(--panel); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 14px; display: none; }
+  #help.show { display: block; }
+  #help div { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; }
+  kbd { background: rgba(255,255,255,.1); border: 1px solid var(--line); border-radius: 4px; padding: 0 5px; font: 12px monospace; }
+  @media (max-width: 600px) { input[type=range] { width: 90px; } #counter { margin-left: 0; } }
+</style>
+</head>
+<body>
+<div id="stage"><img id="layerA" alt=""><img id="layerB" alt=""></div>
+<div id="date"></div>
+<div id="topLinks">
+  <a href="#" id="helpBtn">Keys</a>
+  <a href="/align">Alignment</a>
+</div>
+<div id="help"><div>
+  <kbd>Space</kbd><span>play / pause</span>
+  <kbd>F</kbd><span>full screen</span>
+  <kbd>D</kbd><span>show / hide the date</span>
+  <kbd>L</kbd><span>loop on / off</span>
+</div></div>
+<div id="controls">
+  <button id="play">▶ Play</button>
+  <label>Fade <input type="range" id="fade" min="0" max="5" step="0.1"><output id="fadeOut"></output></label>
+  <label>Hold <input type="range" id="hold" min="0" max="10" step="0.1"><output id="holdOut"></output></label>
+  <label><input type="checkbox" id="loop"> Loop</label>
+  <button id="fullscreen" title="F">⛶ Full screen</button>
+  <span id="counter"></span>
+</div>
+<div id="empty" hidden>No aligned frames yet.<br>Align the photos and generate the frames on <a href="/align" style="color:var(--accent)">/align</a>.</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const layers = [$("layerA"), $("layerB")];
+let frames = [], cur = -1, front = 0, playing = false, timer = null, showToken = 0;
+
+// ---------- settings (remembered in localStorage) ----------
+const DEFAULTS = { fade: 0.8, hold: 0.7, loop: true, showDate: true };
+let settings = { ...DEFAULTS };
+try { Object.assign(settings, JSON.parse(localStorage.getItem("player.settings") || "{}")); } catch {}
+function saveSettings() { try { localStorage.setItem("player.settings", JSON.stringify(settings)); } catch {} }
+
+function bindSettings() {
+  for (const k of ["fade", "hold"]) {
+    const input = $(k), out = $(k + "Out");
+    input.value = settings[k];
+    out.textContent = `${(+settings[k]).toFixed(1)} s`;
+    input.oninput = () => { settings[k] = +input.value; out.textContent = `${settings[k].toFixed(1)} s`; saveSettings(); };
+  }
+  $("loop").checked = settings.loop;
+  $("loop").onchange = () => { settings.loop = $("loop").checked; saveSettings(); };
+  $("date").classList.toggle("hidden", !settings.showDate);
+}
+
+// ---------- preloading ----------
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+// Resolve once the image is loaded, then give decode() a short chance to finish
+// off the main thread. Never hangs: decode() is only an optimisation.
+function ready(im) {
+  const loaded = im.complete && im.naturalWidth ? Promise.resolve()
+    : new Promise((res) => { im.addEventListener("load", res, { once: true }); im.addEventListener("error", res, { once: true }); });
+  return loaded.then(() => Promise.race([im.decode().catch(() => {}), sleep(1000)]));
+}
+
+const decoded = new Map();  // src -> Promise<void>
+function preload(i) {
+  const f = frames[i];
+  if (!f || decoded.has(f.src)) return decoded.get(f?.src);
+  const im = new Image();
+  im.src = f.src;
+  const p = ready(im);
+  decoded.set(f.src, p);
+  if (decoded.size > 16) decoded.delete(decoded.keys().next().value);
+  return p;
+}
+function preloadAhead(i, n = 4) {
+  for (let k = 1; k <= n; k++) {
+    const j = settings.loop ? (i + k) % frames.length : i + k;
+    if (j < frames.length) preload(j);
+  }
+}
+
+// ---------- showing a frame with a crossfade ----------
+// The incoming layer goes on top and fades 0 -> 1 over the outgoing one, which
+// stays fully opaque underneath, so there is no brightness dip mid-fade.
+async function show(i, fadeMs) {
+  const token = ++showToken;
+  const f = frames[i];
+  await preload(i);
+  if (token !== showToken) return false;  // a newer show() call won
+  const inc = layers[1 - front], out = layers[front];
+  inc.style.transition = "none";
+  inc.style.opacity = "0";
+  inc.src = f.src;
+  await ready(inc);
+  if (token !== showToken) return false;
+  out.style.zIndex = "1";
+  inc.style.zIndex = "2";
+  void inc.offsetWidth;  // apply opacity 0 before starting the transition
+  inc.style.transition = fadeMs > 0 ? `opacity ${fadeMs}ms linear` : "none";
+  inc.style.opacity = "1";
+  front = 1 - front;
+  cur = i;
+  updateInfo();
+  preloadAhead(i);
+  return true;
+}
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return d.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
+}
+
+function updateInfo() {
+  const f = frames[cur];
+  $("date").innerHTML = `${fmtDate(f.date)}<small>${f.date.slice(11, 16)}</small>`;
+  $("counter").textContent = `${cur + 1} / ${frames.length}`;
+  document.title = `${f.date.slice(0, 10)} · SpotRiviere timelapse`;
+}
+
+// ---------- playback ----------
+function scheduleNext() {
+  clearTimeout(timer);
+  if (!playing) return;
+  timer = setTimeout(step, (settings.fade + settings.hold) * 1000);
+}
+
+async function step() {
+  if (!playing) return;
+  let next = cur + 1;
+  if (next >= frames.length) {
+    if (!settings.loop) { setPlaying(false); return; }
+    next = 0;
+  }
+  const shown = await show(next, settings.fade * 1000);
+  if (shown) scheduleNext();
+}
+
+function setPlaying(on) {
+  playing = on && frames.length > 1;
+  $("play").textContent = playing ? "❚❚ Pause" : "▶ Play";
+  clearTimeout(timer);
+  if (playing) {
+    if (!settings.loop && cur >= frames.length - 1) show(0, 0).then(scheduleNext);
+    else step();
+  }
+  idleCheck();
+}
+
+// ---------- UI ----------
+function toggleFullscreen() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen?.();
+}
+
+$("play").onclick = () => setPlaying(!playing);
+$("fullscreen").onclick = toggleFullscreen;
+$("helpBtn").onclick = (ev) => { ev.preventDefault(); $("help").classList.toggle("show"); };
+$("stage").onclick = () => setPlaying(!playing);
+
+addEventListener("keydown", (ev) => {
+  if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+  if (ev.target instanceof HTMLInputElement && ev.target.type === "range" && ev.key.startsWith("Arrow")) return;
+  const k = ev.key.toLowerCase();
+  if (k === " ") { ev.preventDefault(); setPlaying(!playing); }
+  else if (k === "f") toggleFullscreen();
+  else if (k === "d") { settings.showDate = !settings.showDate; saveSettings(); $("date").classList.toggle("hidden", !settings.showDate); }
+  else if (k === "l") { settings.loop = !settings.loop; $("loop").checked = settings.loop; saveSettings(); }
+  else return;
+  wake();
+});
+
+// Hide the controls and cursor while playing and the mouse is still.
+let idleTimer = null;
+function idleCheck() {
+  clearTimeout(idleTimer);
+  document.body.classList.remove("idle");
+  if (playing && !$("controls").matches(":hover")) idleTimer = setTimeout(() => document.body.classList.add("idle"), 2500);
+}
+function wake() { idleCheck(); }
+addEventListener("mousemove", wake);
+addEventListener("touchstart", wake, { passive: true });
+
+(async () => {
+  bindSettings();
+  frames = await (await fetch("/api/frames")).json();
+  if (!frames.length) { $("empty").hidden = false; $("controls").hidden = true; return; }
+  await show(0, 0);
+  if (new URLSearchParams(location.search).has("autoplay")) setPlaying(true);
+})();
+</script>
+</body>
+</html>

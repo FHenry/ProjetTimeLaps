@@ -1,10 +1,10 @@
 # Development plan: SpotRiviere timelapse web page
 
-Status: **step 2 done, next: step 3 (player)** (last updated 2026-11-14)
+Status: **step 3 built, waiting for the user's review; next: step 4 (date slider)** (last updated 2026-11-14)
 
 ## Resume here (where we stopped on 2026-11-14)
 
-- All open decisions answered (2026-11-14). Step 1 done (2026-11-14). **Step 2 done (2026-11-14): 155 photos aligned, 1 skipped (#124, 2024-10-18 night shot); all 156 frames rendered and checked (fork on the center cross). Next action: step 3 (player page).**
+- All open decisions answered (2026-11-14). Step 1 done (2026-11-14). **Step 2 done (2026-11-14): 155 photos aligned, 1 skipped (#124, 2024-10-18 night shot); all 156 frames rendered and checked (fork on the center cross). Step 3 player built and tested in headless Chromium (2026-11-14). **Next action: the user tries the player at http://localhost:5000/, then step 4 (date slider).**
 - Optional touch-ups: frames #90 (2023-11-22, 1700632809351) and #104 (2024-03-12, 1710267052026) have the fork ~40-50 px off center (night/dusk shots); re-click on `/align` if they jump in the player.
 - Step 2 code: `align.py` (transforms + rendering; `.venv/bin/python align.py [--force]` renders from the command line), `app.py` (Flask server), `static/align.html` (alignment page). Run `.venv/bin/python app.py`, open http://localhost:5000/align. Clicks are saved in `data/alignment.json` (user data, keep it); frames go to `cache/aligned/<id>.jpg`, and `cache/aligned/rendered.json` records the transform of each frame so only changed frames are re-rendered.
 - Step 2 choices made while building: the reference angle is the circular mean of all clicked fork→point angles. The reference length comes from the shortest branch, scaled so that photo would cover the frame if its fork were centered. Skipped and not-yet-done photos reuse the clicks of the nearest aligned photo (before, else after), in relative coordinates. The page shows the previous aligned photo, zoomed on its branch, so point 2 is clicked on the same spot each time. Frames are generated only on demand (button or CLI), because each new click can change the reference and so every frame.
@@ -51,6 +51,7 @@ Fully automatic alignment was ruled out: in summer the leaves hide the branch, t
 ### 3. Player page (crossfade)
 - Two stacked image layers with a CSS opacity transition; preload the next image.
 - Controls: play/pause, **fade duration** slider, **time each image stays on screen** slider. Remember the settings in localStorage.
+- **Built 2026-11-14:** `static/player.html`, served at `/`; frames come from `GET /api/frames` (timeline photos with a rendered frame, URL versioned by mtime so the browser caches them). The incoming frame fades in on top of the outgoing one, which stays opaque, so there is no brightness dip mid-fade. Fade 0-5 s and hold 0-10 s (defaults 0.8 s / 0.7 s), loop on/off, full screen, date overlay; keys Space / F / D / L; click the image to play or pause; the controls hide while playing; `?autoplay` starts playing on load. 4 frames are preloaded ahead.
 
 ### 4. Date slider
 - Slider over the timeline, showing the current date while dragging; dragging jumps to that image.
