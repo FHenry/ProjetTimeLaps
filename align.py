@@ -7,10 +7,12 @@ Photos with no entry are still to do.
 
 Rendering (decision 4 in PLAN.md): fixed 2560x1440 frame, fork at the center,
 the vector fork->point rotated to the reference angle (circular mean over all
-aligned photos) and scaled to the reference length. The reference length comes
-from the photo with the SHORTEST branch (widest shot), scaled so that photo
-covers the frame; every other photo is shrunk, never enlarged relative to it.
-The empty area is filled with a blurred, darkened copy of the photo.
+aligned photos) and scaled to the reference length. The reference length is
+the SHORTEST branch (widest shot) shown at MAX_SCALE output px per original px
+(1.0 = its real resolution). Every other photo has a longer branch, so it is
+shown below its real resolution: no photo is ever upscaled. Wide shots extend
+past the frame edges; the empty area around close-ups is filled with a
+blurred, darkened copy of the photo.
 
 Run: .venv/bin/python align.py          (render frames whose transform changed)
      .venv/bin/python align.py --force  (render every frame)
@@ -32,6 +34,9 @@ ALIGNED_DIR = CACHE_DIR / "aligned"
 RENDERED_PATH = ALIGNED_DIR / "rendered.json"  # transform used for each frame
 
 FRAME_W, FRAME_H = 2560, 1440
+# Output px per original px for the widest shot (decision 4 in PLAN.md).
+# 1.0 = no photo above its real resolution. Lower = smaller photos in the frame.
+MAX_SCALE = 1.0
 BG_DARKEN = 0.45
 BG_BLUR = 12  # px, applied on a 1/8 size copy
 
@@ -59,7 +64,7 @@ def load_alignment():
 def _write_json(path, obj):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_suffix(".tmp")
-    tmp.write_text(json.dumps(obj, indent=1, sort_keys=True))
+    tmp.write_text(json.dumps(obj, indent=1, sort_keys=True) + "\n")
     tmp.replace(path)
 
 
@@ -106,8 +111,7 @@ def compute_transforms(entries=None, alignment=None):
     # Reference length: the shortest branch, from the widest shot.
     ref_entry = min(clicked, key=lambda e: _vec(alignment[e["id"]])[0])
     ref_len = _vec(alignment[ref_entry["id"]])[0]
-    cover = max(FRAME_W / ref_entry["width"], FRAME_H / ref_entry["height"])
-    ref_out_len = ref_len * cover  # branch length in output px
+    ref_out_len = ref_len * MAX_SCALE  # branch length in output px
 
     def transform_from(src_id, target):
         a = alignment[src_id]
