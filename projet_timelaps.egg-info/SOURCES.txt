@@ -1,9 +1,0 @@
-align.py
-app.py
-catalog.py
-pyproject.toml
-projet_timelaps.egg-info/PKG-INFO
-projet_timelaps.egg-info/SOURCES.txt
-projet_timelaps.egg-info/dependency_links.txt
-projet_timelaps.egg-info/requires.txt
-projet_timelaps.egg-info/top_level.txt

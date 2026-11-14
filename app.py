@@ -38,8 +38,12 @@ def api_catalog():
 @app.get("/api/alignment")
 def api_alignment():
     transforms, reference = align.compute_transforms()
-    return jsonify(clicks=align.load_alignment(), transforms=transforms,
-                   reference=reference, render=align.progress)
+    return jsonify(
+        clicks=align.load_alignment(),
+        transforms=transforms,
+        reference=reference,
+        render=align.progress,
+    )
 
 
 @app.put("/api/alignment/<photo_id>")

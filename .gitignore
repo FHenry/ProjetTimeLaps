@@ -1,3 +1,13 @@
-/cache
-/SpotRiviere
-__pycache__
+# Original photos: ~600 MB, never in git (see CLAUDE.md)
+SpotRiviere/
+
+# Generated: rebuilt by catalog.py / align.py
+cache/
+
+# Python
+.venv/
+__pycache__/
+*.egg-info/
+.ruff_cache/
+
+# Keep data/alignment.json (the user's clicks) in git.

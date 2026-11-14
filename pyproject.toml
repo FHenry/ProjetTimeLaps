@@ -14,6 +14,11 @@ suggest = [
     "numpy",
     "opencv-python-headless",
 ]
+# Development tools: .venv/bin/pip install -e ".[dev]"
+dev = [
+    "pre-commit>=4",
+    "ruff>=0.8",
+]
 
 [build-system]
 requires = ["setuptools>=69"]
@@ -22,3 +27,12 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools]
 # Flat layout: plain modules at the root, no package directory.
 py-modules = ["catalog", "align", "app"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = ["SpotRiviere", "cache"]
+
+[tool.ruff.lint]
+# pycodestyle, pyflakes, import order, bugbear, pyupgrade
+select = ["E", "W", "F", "I", "B", "UP"]

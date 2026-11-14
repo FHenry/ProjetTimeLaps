@@ -77,8 +77,12 @@ def process(path, force=False):
     web_path = WEB_DIR / f"{photo_id}.jpg"
     thumb_path = THUMB_DIR / f"{photo_id}.jpg"
     mtime = path.stat().st_mtime
-    up_to_date = (not force and web_path.exists() and thumb_path.exists()
-                  and web_path.stat().st_mtime >= mtime)
+    up_to_date = (
+        not force
+        and web_path.exists()
+        and thumb_path.exists()
+        and web_path.stat().st_mtime >= mtime
+    )
 
     with Image.open(path) as img:
         width, height = img.size  # EXIF orientation is 1 on all current files
@@ -117,8 +121,9 @@ def process(path, force=False):
 def build(force=False):
     WEB_DIR.mkdir(parents=True, exist_ok=True)
     THUMB_DIR.mkdir(parents=True, exist_ok=True)
-    files = sorted(p for p in SOURCE_DIR.iterdir()
-                   if p.is_file() and p.suffix.lower() in IMAGE_EXTS)
+    files = sorted(
+        p for p in SOURCE_DIR.iterdir() if p.is_file() and p.suffix.lower() in IMAGE_EXTS
+    )
     with ProcessPoolExecutor() as pool:
         entries = list(pool.map(process, files, [force] * len(files)))
     entries.sort(key=lambda e: (e["timestamp"], e["id"]))

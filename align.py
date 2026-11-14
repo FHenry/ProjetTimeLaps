@@ -21,11 +21,10 @@ import math
 import sys
 import threading
 from concurrent.futures import ProcessPoolExecutor
-from pathlib import Path
 
 from PIL import Image, ImageEnhance, ImageFilter, ImageOps
 
-from catalog import CACHE_DIR, ROOT, SOURCE_DIR, CATALOG_PATH
+from catalog import CACHE_DIR, CATALOG_PATH, ROOT, SOURCE_DIR
 
 DATA_DIR = ROOT / "data"
 ALIGNMENT_PATH = DATA_DIR / "alignment.json"
@@ -40,6 +39,7 @@ _lock = threading.Lock()
 
 
 # ---------- storage ----------
+
 
 def load_catalog():
     return json.loads(CATALOG_PATH.read_text())
@@ -76,6 +76,7 @@ def set_alignment(photo_id, value):
 
 
 # ---------- geometry ----------
+
 
 def _vec(a):
     dx, dy = a["point"][0] - a["fork"][0], a["point"][1] - a["fork"][1]
@@ -135,12 +136,17 @@ def compute_transforms(entries=None, alignment=None):
         j = before[-1] if before else after[0]
         transforms[e["id"]] = transform_from(entries[j]["id"], e)
 
-    reference = {"id": ref_entry["id"], "angle": ref_angle, "length": ref_out_len,
-                 "frame": [FRAME_W, FRAME_H]}
+    reference = {
+        "id": ref_entry["id"],
+        "angle": ref_angle,
+        "length": ref_out_len,
+        "frame": [FRAME_W, FRAME_H],
+    }
     return transforms, reference
 
 
 # ---------- rendering ----------
+
 
 def render_frame(entry, t, out_path):
     with Image.open(SOURCE_DIR / entry["file"]) as img:
@@ -151,8 +157,9 @@ def render_frame(entry, t, out_path):
     k = src.width / entry["width"]  # loaded px per original px
     if t["scale"] / k < 0.5:  # pre-shrink so bicubic doesn't alias
         f = t["scale"] / k * 2
-        src = src.resize((max(1, round(src.width * f)), max(1, round(src.height * f))),
-                         Image.LANCZOS)
+        src = src.resize(
+            (max(1, round(src.width * f)), max(1, round(src.height * f))), Image.LANCZOS
+        )
         k = src.width / entry["width"]
 
     s = t["scale"] / k
@@ -166,7 +173,8 @@ def render_frame(entry, t, out_path):
 
     photo = src.transform((FRAME_W, FRAME_H), Image.AFFINE, coeffs, Image.BICUBIC)
     mask = Image.new("L", src.size, 255).transform(
-        (FRAME_W, FRAME_H), Image.AFFINE, coeffs, Image.BILINEAR)
+        (FRAME_W, FRAME_H), Image.AFFINE, coeffs, Image.BILINEAR
+    )
 
     # Background: the photo, rotated the same way, scaled to cover the frame.
     small = src.resize((max(1, src.width // 8), max(1, src.height // 8)), Image.BILINEAR)
