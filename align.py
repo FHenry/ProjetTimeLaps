@@ -5,7 +5,7 @@ data/alignment.json holds the user's clicks, keyed by photo id, in ORIGINAL pixe
   {"<id>": {"skip": true}}                       branch not visible
 Photos with no entry are still to do.
 
-Rendering (decision 4 in PLAN.md): fixed 2560x1440 frame, fork at the center,
+Rendering (decision 4 in PLAN.md): fixed 2560x1440 frame, fork at (FORK_X, FORK_Y),
 the vector fork->point rotated to the reference angle (circular mean over all
 aligned photos) and scaled to the reference length. The reference length is
 the SHORTEST branch (widest shot) shown at MAX_SCALE output px per original px
@@ -37,6 +37,10 @@ FRAME_W, FRAME_H = 2560, 1440
 # Output px per original px for the widest shot (decision 4 in PLAN.md).
 # 1.0 = no photo above its real resolution. Lower = smaller photos in the frame.
 MAX_SCALE = 1.0
+# Where the fork lands in the frame: horizontally centered, raised FORK_RAISE px
+# above the middle (270 frame px ~ 200 screen px on a full-screen 1920x1080 display).
+FORK_RAISE = 270
+FORK_X, FORK_Y = FRAME_W / 2, FRAME_H / 2 - FORK_RAISE
 BG_DARKEN = 0.45
 BG_BLUR = 12  # px, applied on a 1/8 size copy
 
@@ -127,6 +131,7 @@ def compute_transforms(entries=None, alignment=None):
             "scale": round(ref_out_len / length, 6),
             "rotation": round(ref_angle - angle, 6),
             "source": src_id,
+            "center": [FORK_X, FORK_Y],  # in the transform so a change re-renders
         }
 
     transforms = {}
@@ -145,6 +150,7 @@ def compute_transforms(entries=None, alignment=None):
         "angle": ref_angle,
         "length": ref_out_len,
         "frame": [FRAME_W, FRAME_H],
+        "center": [FORK_X, FORK_Y],
     }
     return transforms, reference
 
@@ -169,7 +175,7 @@ def render_frame(entry, t, out_path):
     s = t["scale"] / k
     fx, fy = t["fork"][0] * k, t["fork"][1] * k
     cos, sin = math.cos(t["rotation"]), math.sin(t["rotation"])
-    cx, cy = FRAME_W / 2, FRAME_H / 2
+    cx, cy = t["center"]
     # Inverse map: output (ox, oy) -> source (x, y).
     a, b = cos / s, sin / s
     d, e = -sin / s, cos / s

@@ -1,23 +1,38 @@
 # Development plan: SpotRiviere timelapse web page
 
-Status: **steps 3 and 4 built; next: step 5 (upload)** (last updated 2026-11-14)
+Status: **steps 1-4 done; next: step 5 (upload)** (last updated 2026-11-14)
 
 ## Resume here (where we stopped on 2026-11-14)
 
-- All open decisions answered (2026-11-14). Step 1 done (2026-11-14). **Step 2 done (2026-11-14): 155 photos aligned, 1 skipped (#124, 2024-10-18 night shot); all 156 frames rendered and checked (fork on the center cross). Step 3 player built and tested in headless Chromium (2026-11-14). Step 4 date slider built and tested in headless Chromium (2026-11-14). **Next action: the user tries the player and the date slider at http://localhost:5000/, then step 5 (upload).**
-- Optional touch-ups: frames #90 (2023-11-22, 1700632809351) and #104 (2024-03-12, 1710267052026) have the fork ~40-50 px off center (night/dusk shots); re-click on `/align` if they jump in the player.
-- Step 2 code: `align.py` (transforms + rendering; `.venv/bin/python align.py [--force]` renders from the command line), `app.py` (Flask server), `static/align.html` (alignment page). Run `.venv/bin/python app.py`, open http://localhost:5000/align. Clicks are saved in `data/alignment.json` (user data, keep it); frames go to `cache/aligned/<id>.jpg`, and `cache/aligned/rendered.json` records the transform of each frame so only changed frames are re-rendered.
-- Step 2 choices made while building: the reference angle is the circular mean of all clicked fork→point angles. The reference length comes from the shortest branch, scaled so that photo would cover the frame if its fork were centered. Skipped and not-yet-done photos reuse the clicks of the nearest aligned photo (before, else after), in relative coordinates. The page shows the previous aligned photo, zoomed on its branch, so point 2 is clicked on the same spot each time. Frames are generated only on demand (button or CLI), because each new click can change the reference and so every frame.
-- Step 1 result: `catalog.py` (run `.venv/bin/python catalog.py`, add `--force` to rebuild every copy) writes `cache/catalog.json`, `cache/web/<id>.jpg` (1920 px wide) and `cache/thumb/<id>.jpg` (320 px). It only rebuilds missing or outdated copies. 160 photos, 2021-01-03 → 2026-11-13, all dated from the filename. Each entry has id, file, date, timestamp, date_source, original width/height, sha256, web/thumb paths and `duplicate_of`.
-- 4 originals are byte-identical copies of earlier photos under later names (1614151643752, 1614151643757, 1616334649422, 1616334649423). They get `duplicate_of` set and must be skipped by the timeline and the alignment page, so 156 photos remain. The files stay in `SpotRiviere/`.
-- Dev tooling (2026-11-14): git repo; `.pre-commit-config.yaml` runs a guard that blocks committing `SpotRiviere/`, `cache/` or `.venv/`, plus check-added-large-files (1 MB), json/toml/yaml checks and ruff (lint + format; settings in `pyproject.toml`). Setup: `.venv/bin/pip install -e ".[dev]" && .venv/bin/pre-commit install`. Possible next: pytest tests for the date parsing and the alignment math.
-- Done so far: plan written; branch alignment added as step 2; tools installed (see below).
-- Project venv `.venv/` has Flask 3.1.3 + Pillow 13.0.0. System tools: Python 3.14 + Pillow 12, `ffmpeg`/`ffprobe` 8.0.1 (libx264, libx265, libvpx, libsvtav1), `exiftool` 13.50, ImageMagick 7.1.2 (`magick`). Not installed: `numpy`, `opencv` (only needed for the optional point guessing in step 2), Flask is only in the venv.
-- What a contact sheet of every 10th photo showed (basis for choosing manual alignment over automatic):
-  - Framing and zoom vary a lot between visits: some shots are close-ups of the water, others wide views with a large ivy-covered trunk on the right.
-  - Summer foliage hides most of the frame, and often the Y branch. In winter only bare branches show.
-  - Some shots are dark (night / low light).
-- Possible later extra: ffmpeg could also export the aligned frames as an MP4 timelapse (not in the steps yet).
+**Steps 1-4 are done and committed. Next action: step 5 (upload).**
+
+- Start: `.venv/bin/python app.py` → http://localhost:5000/ (player with date slider), http://localhost:5000/align (alignment).
+- State on 2026-11-14:
+  - 156 photos in the timeline (160 files minus 4 byte-identical duplicates, which are marked `duplicate_of`).
+  - 155 aligned, 1 skipped (#124, 2024-10-18 night shot); all 156 frames rendered and checked.
+  - Clicks are in `data/alignment.json`, which is in git.
+- Last change (2026-11-14): the fork sits at (1280, 450), 270 frame px above the center (`FORK_RAISE` in `align.py`). Frames were re-rendered and checked, and are ~95% covered on average. The user wanted to see it in the player; its commit may still be pending (check `git status`).
+- Optional touch-ups: #90 (2023-11-22, 1700632809351) and #104 (2024-03-12, 1710267052026) have the fork ~40-50 px off its target (dusk/night shots). Re-click them on `/align` if they jump in the player.
+- Notes for step 5 (upload):
+  - Reuse `catalog.process()` for the web copy, thumbnail, date (filename → EXIF → file time) and sha256. Reject an upload whose sha256 is already in the catalog.
+  - Save into `SpotRiviere/` under the original name. Never overwrite: add a suffix if the name exists.
+  - Then open `/align` on the new photo. After its 2 clicks, re-render; `render_all()` only rebuilds what changed. Every frame is rebuilt if the new photo becomes the widest shot (new reference length) or shifts the mean angle.
+  - `catalog.build()` currently re-reads every file. That is fine at this size (~5 s), but an incremental add would be nicer.
+- Possible extras, not planned yet: MP4 export of the frames with ffmpeg; pytest tests for date parsing and the alignment math.
+
+### Code map
+- `catalog.py` (step 1): `cache/catalog.json`, `cache/web/` (1920 px), `cache/thumb/` (320 px). Rebuilds only missing or outdated copies; `--force` rebuilds all.
+- `align.py` (step 2): transforms from `data/alignment.json`, renders `cache/aligned/<id>.jpg`. `cache/aligned/rendered.json` stores each frame's transform, so only changed frames are re-rendered; `--force` renders all.
+  - Reference angle: circular mean of the clicked angles.
+  - Reference length: the shortest branch at `MAX_SCALE` = 1.0, so no photo is shown above its real resolution.
+  - Skipped photos reuse the nearest aligned photo's clicks.
+- `app.py`: Flask server, pages and JSON APIs (see `CLAUDE.md`).
+- `static/align.html` (step 2), `static/player.html` (steps 3-4).
+- Dev tooling: `pyproject.toml` (deps; `dev` and `suggest` extras; ruff settings), `.pre-commit-config.yaml` (guard against committing photos/cache/venv, 1 MB limit, json/toml/yaml, ruff).
+
+### Background
+- Environment: the project venv `.venv/` has Flask 3.1, Pillow 13, pre-commit and ruff. System: Python 3.14, ffmpeg 8, exiftool, ImageMagick 7, Chromium (snap) for headless page tests. numpy and opencv are not installed.
+- Why alignment is manual: framing and zoom vary a lot between visits, summer foliage often hides the Y branch, and some shots are dark (night / low light).
 
 ## Constraints driving the design
 
@@ -37,7 +52,7 @@ Status: **steps 3 and 4 built; next: step 5 (upload)** (last updated 2026-11-14)
 - **Check:** dates are correctly ordered and the web copies look right. **Done 2026-11-14:** order verified and a contact sheet shows the seasons in sequence.
 
 ### 2. Branch alignment (2 clicks per photo)
-Goal: the Y-shaped tree branch (an upside-down Y) stays at the exact center of every frame, at the same angle and size, so the crossfade doesn't jump.
+Goal: the Y-shaped tree branch (an upside-down Y) stays at the exact center of every frame, at the same angle and size, so the crossfade doesn't jump. (Later moved 270 px above the center; see decision 4.)
 Fully automatic alignment was ruled out: in summer the leaves hide the branch, the framing and zoom change a lot between visits, and night shots have little contrast.
 - Alignment page (`/align`): shows one photo at a time. The user clicks **(1) the fork of the Y**, then **(2) a second point on the branch** (e.g. lower down its trunk). Keys: Enter = next, S = skip, Backspace = redo the clicks.
 - From the 2 points, compute a similarity transform (shift X/Y, rotation, scale): the fork maps to the frame center, and the vector fork→point 2 maps to a fixed reference angle and length.
@@ -69,4 +84,4 @@ Fully automatic alignment was ruled out: in summer the leaves hide the branch, t
 1. ~~Mixed sizes~~: superseded by decision 4 (the alignment defines a common output frame).
 2. ~~Server~~ **Decided (2026-11-14):** Flask, installed in a project virtual environment `.venv/` (`python3 -m venv .venv && .venv/bin/pip install -e .`, dependencies listed in `pyproject.toml`). Nothing is installed in the system Python. Run with `.venv/bin/python app.py`.
 3. ~~Is alignment in scope?~~ **Decided (2026-11-13):** yes, as the 2-click branch alignment in step 2.
-4. ~~Output frame~~ **Decided (2026-11-14), revised the same day after seeing the frames:** fixed 2560×1440 (16:9) frame, shown as large as the browser window allows. No photo is ever shown above its real resolution: the widest shot (shortest branch fork→point 2) is shown at 1 output px per original px (`MAX_SCALE = 1.0` in `align.py`), and every other photo is smaller. Wide shots extend past the frame edges and lose their borders. The first version scaled the widest shot to just cover the frame; photos then covered only ~46% of the frame on average, against ~81% now. The fork stays at the frame center. The empty area around a photo is filled with a blurred, darkened copy of that photo. If a new upload has a smaller branch length than the reference, the reference changes and all aligned frames are regenerated.
+4. ~~Output frame~~ **Decided (2026-11-14), revised the same day after seeing the frames:** fixed 2560×1440 (16:9) frame, shown as large as the browser window allows. No photo is ever shown above its real resolution: the widest shot (shortest branch fork→point 2) is shown at 1 output px per original px (`MAX_SCALE = 1.0` in `align.py`), and every other photo is smaller. Wide shots extend past the frame edges and lose their borders. The first version scaled the widest shot to just cover the frame; photos then covered only ~46% of the frame on average, against ~81% now. **Also 2026-11-14:** the fork sits 270 frame px above the frame center, at (1280, 450) (`FORK_RAISE` in `align.py`; about 200 screen px on a full-screen 1080p display). The user asked for this, and it pushes most of the photo into view: about 95% of the frame is covered on average, and 83/156 frames are ≥ 90% covered. The fork stays at the frame center. The empty area around a photo is filled with a blurred, darkened copy of that photo. If a new upload has a smaller branch length than the reference, the reference changes and all aligned frames are regenerated.
