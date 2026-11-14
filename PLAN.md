@@ -1,10 +1,10 @@
 # Development plan: SpotRiviere timelapse web page
 
-Status: **step 3 built, waiting for the user's review; next: step 4 (date slider)** (last updated 2026-11-14)
+Status: **steps 3 and 4 built; next: step 5 (upload)** (last updated 2026-11-14)
 
 ## Resume here (where we stopped on 2026-11-14)
 
-- All open decisions answered (2026-11-14). Step 1 done (2026-11-14). **Step 2 done (2026-11-14): 155 photos aligned, 1 skipped (#124, 2024-10-18 night shot); all 156 frames rendered and checked (fork on the center cross). Step 3 player built and tested in headless Chromium (2026-11-14). **Next action: the user tries the player at http://localhost:5000/, then step 4 (date slider).**
+- All open decisions answered (2026-11-14). Step 1 done (2026-11-14). **Step 2 done (2026-11-14): 155 photos aligned, 1 skipped (#124, 2024-10-18 night shot); all 156 frames rendered and checked (fork on the center cross). Step 3 player built and tested in headless Chromium (2026-11-14). Step 4 date slider built and tested in headless Chromium (2026-11-14). **Next action: the user tries the player and the date slider at http://localhost:5000/, then step 5 (upload).**
 - Optional touch-ups: frames #90 (2023-11-22, 1700632809351) and #104 (2024-03-12, 1710267052026) have the fork ~40-50 px off center (night/dusk shots); re-click on `/align` if they jump in the player.
 - Step 2 code: `align.py` (transforms + rendering; `.venv/bin/python align.py [--force]` renders from the command line), `app.py` (Flask server), `static/align.html` (alignment page). Run `.venv/bin/python app.py`, open http://localhost:5000/align. Clicks are saved in `data/alignment.json` (user data, keep it); frames go to `cache/aligned/<id>.jpg`, and `cache/aligned/rendered.json` records the transform of each frame so only changed frames are re-rendered.
 - Step 2 choices made while building: the reference angle is the circular mean of all clicked fork→point angles. The reference length comes from the shortest branch, scaled so that photo would cover the frame if its fork were centered. Skipped and not-yet-done photos reuse the clicks of the nearest aligned photo (before, else after), in relative coordinates. The page shows the previous aligned photo, zoomed on its branch, so point 2 is clicked on the same spot each time. Frames are generated only on demand (button or CLI), because each new click can change the reference and so every frame.
@@ -57,6 +57,7 @@ Fully automatic alignment was ruled out: in summer the leaves hide the branch, t
 - Slider over the timeline, showing the current date while dragging; dragging jumps to that image.
 - Option: space images evenly on the slider, or space them by real time (shows gaps between visits).
 - Left and right arrow keys step to the previous or next image.
+- **Built 2026-11-14** in `static/player.html`: a range input laid over a strip of ticks (one per photo) with year labels. A date bubble follows the handle while dragging, and dragging shows the photo at once (no fade). Playback pauses during a drag and resumes after. The "Spacing" select (even / real time) is saved in localStorage; real time snaps to the nearest photo and shows the gaps between visits (e.g. most of 2025). Keys: ← → (also ↑ ↓), Home, End, with a short fade (≤ 0.25 s). Fast repeated presses add up, because steps count from the last requested frame (`target`), not from the frame on screen (`cur`).
 
 ### 5. Upload
 - Drag-and-drop and a file picker, sent to the Flask endpoint.

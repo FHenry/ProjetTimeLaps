@@ -20,9 +20,34 @@
   #date small { display: block; font-size: 0.5em; font-weight: 400; color: #ddd; }
   #date.hidden { display: none; }
   #controls { position: fixed; left: 50%; bottom: 16px; transform: translateX(-50%);
-    width: min(860px, calc(100vw - 32px)); background: var(--panel); backdrop-filter: blur(8px);
+    width: min(1100px, calc(100vw - 32px)); background: var(--panel); backdrop-filter: blur(8px);
     border: 1px solid var(--line); border-radius: 12px; padding: 10px 14px;
     display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; transition: opacity .4s; }
+  /* Timeline: a range input over a strip of ticks (one per photo) and year labels.
+     --thumb is the range thumb width; ticks are inset by half of it so they line up. */
+  #timeline { --thumb: 16px; position: relative; flex: 1 1 100%; height: 44px; }
+  #ticks { position: absolute; left: calc(var(--thumb) / 2); right: calc(var(--thumb) / 2); top: 6px; height: 12px; }
+  #ticks i { position: absolute; top: 0; width: 1px; height: 12px; background: rgba(255,255,255,.45); }
+  #years { position: absolute; left: calc(var(--thumb) / 2); right: calc(var(--thumb) / 2); top: 26px; height: 16px;
+    font-size: 11px; color: var(--muted); }
+  #years span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  #years span::before { content: ""; position: absolute; left: 50%; top: -9px; width: 1px; height: 6px; background: var(--muted); }
+  #scrub { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: 24px; margin: 0;
+    background: transparent; -webkit-appearance: none; appearance: none; cursor: pointer; }
+  #scrub::-webkit-slider-runnable-track { height: 24px; background: transparent; }
+  #scrub::-moz-range-track { height: 24px; background: transparent; }
+  #scrub::-webkit-slider-thumb { -webkit-appearance: none; width: var(--thumb); height: 24px; border-radius: 4px;
+    background: var(--accent); box-shadow: 0 0 0 2px #000a; }
+  #scrub::-moz-range-thumb { width: var(--thumb); height: 24px; border: 0; border-radius: 4px;
+    background: var(--accent); box-shadow: 0 0 0 2px #000a; }
+  #scrub:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 4px; }
+  #bubble { position: absolute; bottom: 34px; transform: translateX(-50%); background: #000d; color: #fff;
+    border: 1px solid var(--line); border-radius: 6px; padding: 3px 8px; font-size: 13px; white-space: nowrap;
+    pointer-events: none; display: none; font-variant-numeric: tabular-nums; }
+  #bubble.show { display: block; }
+  select { background: rgba(255,255,255,.08); color: var(--text); border: 1px solid var(--line);
+    border-radius: 8px; padding: 5px 8px; font: inherit; }
+  select option { background: #222; }
   body.idle #controls, body.idle #topLinks { opacity: 0; pointer-events: none; }
   body.idle { cursor: none; }
   button { background: rgba(255,255,255,.08); color: var(--text); border: 1px solid var(--line);
@@ -58,12 +83,22 @@
   <kbd>F</kbd><span>full screen</span>
   <kbd>D</kbd><span>show / hide the date</span>
   <kbd>L</kbd><span>loop on / off</span>
+  <kbd>← →</kbd><span>previous / next photo</span>
+  <kbd>Home End</kbd><span>first / last photo</span>
 </div></div>
 <div id="controls">
+  <div id="timeline">
+    <div id="ticks"></div>
+    <div id="years"></div>
+    <input type="range" id="scrub" min="0" max="1" step="1" value="0" aria-label="Date">
+    <div id="bubble"></div>
+  </div>
   <button id="play">▶ Play</button>
   <label>Fade <input type="range" id="fade" min="0" max="5" step="0.1"><output id="fadeOut"></output></label>
   <label>Hold <input type="range" id="hold" min="0" max="10" step="0.1"><output id="holdOut"></output></label>
   <label><input type="checkbox" id="loop"> Loop</label>
+  <label>Spacing <select id="spacing" title="How photos are spread along the date slider">
+    <option value="even">even</option><option value="time">real time</option></select></label>
   <button id="fullscreen" title="F">⛶ Full screen</button>
   <span id="counter"></span>
 </div>
@@ -75,7 +110,7 @@ const layers = [$("layerA"), $("layerB")];
 let frames = [], cur = -1, front = 0, playing = false, timer = null, showToken = 0;
 
 // ---------- settings (remembered in localStorage) ----------
-const DEFAULTS = { fade: 0.8, hold: 0.7, loop: true, showDate: true };
+const DEFAULTS = { fade: 0.8, hold: 0.7, loop: true, showDate: true, spacing: "even" };
 let settings = { ...DEFAULTS };
 try { Object.assign(settings, JSON.parse(localStorage.getItem("player.settings") || "{}")); } catch {}
 function saveSettings() { try { localStorage.setItem("player.settings", JSON.stringify(settings)); } catch {} }
@@ -89,6 +124,8 @@ function bindSettings() {
   }
   $("loop").checked = settings.loop;
   $("loop").onchange = () => { settings.loop = $("loop").checked; saveSettings(); };
+  $("spacing").value = settings.spacing === "time" ? "time" : "even";
+  $("spacing").onchange = () => { settings.spacing = $("spacing").value; saveSettings(); buildTimeline(); };
   $("date").classList.toggle("hidden", !settings.showDate);
 }
 
@@ -123,8 +160,10 @@ function preloadAhead(i, n = 4) {
 // ---------- showing a frame with a crossfade ----------
 // The incoming layer goes on top and fades 0 -> 1 over the outgoing one, which
 // stays fully opaque underneath, so there is no brightness dip mid-fade.
+let target = -1;  // most recently requested frame (cur only changes once it is on screen)
 async function show(i, fadeMs) {
   const token = ++showToken;
+  target = i;
   const f = frames[i];
   await preload(i);
   if (token !== showToken) return false;  // a newer show() call won
@@ -156,6 +195,80 @@ function updateInfo() {
   $("date").innerHTML = `${fmtDate(f.date)}<small>${f.date.slice(11, 16)}</small>`;
   $("counter").textContent = `${cur + 1} / ${frames.length}`;
   document.title = `${f.date.slice(0, 10)} · SpotRiviere timelapse`;
+  if (!scrubbing) $("scrub").value = sliderValue(cur);
+}
+
+// ---------- date slider ----------
+// "even": one slider step per photo. "time": the slider runs over real time,
+// so long gaps between visits show as empty stretches; it snaps to the nearest photo.
+const timeMode = () => settings.spacing === "time";
+const t0 = () => frames[0].timestamp, t1 = () => frames[frames.length - 1].timestamp;
+const sliderValue = (i) => (timeMode() ? frames[i].timestamp : i);
+function fraction(i) {  // 0..1 position of photo i along the slider
+  if (frames.length < 2) return 0;
+  return timeMode() ? (frames[i].timestamp - t0()) / (t1() - t0()) : i / (frames.length - 1);
+}
+function indexAt(value) {
+  if (!timeMode()) return Math.round(value);
+  let lo = 0, hi = frames.length - 1;  // binary search for the nearest timestamp
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (frames[mid].timestamp <= value) lo = mid; else hi = mid; }
+  return value - frames[lo].timestamp <= frames[hi].timestamp - value ? lo : hi;
+}
+
+function buildTimeline() {
+  const scrub = $("scrub");
+  if (timeMode()) { scrub.min = t0(); scrub.max = t1(); scrub.step = "any"; }
+  else { scrub.min = 0; scrub.max = frames.length - 1; scrub.step = 1; }
+  $("ticks").innerHTML = frames.map((_, i) => `<i style="left:${(fraction(i) * 100).toFixed(3)}%"></i>`).join("");
+  // Year labels: at Jan 1 in time mode, at the year's first photo in even mode.
+  const years = [];
+  frames.forEach((f, i) => {
+    const y = +f.date.slice(0, 4);
+    if (i === 0 || y !== +frames[i - 1].date.slice(0, 4)) {
+      const x = timeMode() ? Math.max(0, (new Date(y, 0, 1) / 1000 - t0()) / (t1() - t0())) : fraction(i);
+      years.push(`<span style="left:${(x * 100).toFixed(3)}%">${y}</span>`);
+    }
+  });
+  $("years").innerHTML = years.join("");
+  if (cur >= 0) scrub.value = sliderValue(cur);
+}
+
+let scrubbing = false, wasPlaying = false;
+function showBubble(i) {
+  const b = $("bubble"), w = $("timeline").clientWidth, thumb = 16;
+  b.textContent = `${fmtDate(frames[i].date)} · ${i + 1}/${frames.length}`;
+  b.style.left = `${thumb / 2 + fraction(i) * (w - thumb)}px`;
+  b.classList.add("show");
+}
+function startScrub() {
+  if (scrubbing) return;
+  scrubbing = true;
+  wasPlaying = playing;
+  if (playing) setPlaying(false);
+}
+function endScrub() {
+  if (!scrubbing) return;
+  scrubbing = false;
+  $("bubble").classList.remove("show");
+  $("scrub").value = sliderValue(cur);  // snap the thumb onto the photo
+  if (wasPlaying) { playing = true; $("play").textContent = "❚❚ Pause"; scheduleNext(); idleCheck(); }
+}
+$("scrub").addEventListener("pointerdown", startScrub);
+$("scrub").addEventListener("input", () => {
+  const i = indexAt(+$("scrub").value);
+  if (scrubbing) showBubble(i);
+  if (i !== target) show(i, 0);
+});
+addEventListener("pointerup", endScrub);
+addEventListener("pointercancel", endScrub);
+
+// Step to a photo from the keyboard, with a short fade. Steps count from the
+// last requested photo, so fast repeated key presses all add up.
+function jump(i) {
+  if (!frames.length) return;
+  i = Math.max(0, Math.min(frames.length - 1, i));
+  if (i === target) return;
+  show(i, Math.min(settings.fade, 0.25) * 1000).then((ok) => ok && scheduleNext());
 }
 
 // ---------- playback ----------
@@ -200,9 +313,16 @@ $("stage").onclick = () => setPlaying(!playing);
 
 addEventListener("keydown", (ev) => {
   if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
-  if (ev.target instanceof HTMLInputElement && ev.target.type === "range" && ev.key.startsWith("Arrow")) return;
+  // Arrow keys adjust the fade/hold sliders when they have focus; everywhere else they step photos.
+  if (ev.target instanceof HTMLInputElement && ev.target.type === "range" && ev.target.id !== "scrub"
+      && ev.key.startsWith("Arrow")) return;
+  if (ev.target instanceof HTMLSelectElement) return;
   const k = ev.key.toLowerCase();
-  if (k === " ") { ev.preventDefault(); setPlaying(!playing); }
+  if (k === "arrowright" || k === "arrowup") { ev.preventDefault(); jump(target + 1); }
+  else if (k === "arrowleft" || k === "arrowdown") { ev.preventDefault(); jump(target - 1); }
+  else if (k === "home") { ev.preventDefault(); jump(0); }
+  else if (k === "end") { ev.preventDefault(); jump(frames.length - 1); }
+  else if (k === " ") { ev.preventDefault(); setPlaying(!playing); }
   else if (k === "f") toggleFullscreen();
   else if (k === "d") { settings.showDate = !settings.showDate; saveSettings(); $("date").classList.toggle("hidden", !settings.showDate); }
   else if (k === "l") { settings.loop = !settings.loop; $("loop").checked = settings.loop; saveSettings(); }
@@ -225,6 +345,7 @@ addEventListener("touchstart", wake, { passive: true });
   bindSettings();
   frames = await (await fetch("/api/frames")).json();
   if (!frames.length) { $("empty").hidden = false; $("controls").hidden = true; return; }
+  buildTimeline();
   await show(0, 0);
   if (new URLSearchParams(location.search).has("autoplay")) setPlaying(true);
 })();
