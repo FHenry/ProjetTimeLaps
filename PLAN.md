@@ -1,10 +1,10 @@
 # Development plan: SpotRiviere timelapse web page
 
-Status: **steps 1-4 done; next: step 5 (upload)** (last updated 2026-11-14)
+Status: **steps 1-5 done; all planned steps built** (last updated 2026-11-14)
 
 ## Resume here (where we stopped on 2026-11-14)
 
-**Steps 1-4 are done and committed. Next action: step 5 (upload).**
+**Steps 1-5 are done. Step 5 (upload) was built and tested in a sandbox on 2026-11-14; no real photo has been uploaded yet. Next: try an upload for real, then pick an extra (see below).**
 
 - Start: `.venv/bin/python app.py` → http://localhost:5000/ (player with date slider), http://localhost:5000/align (alignment).
 - State on 2026-11-14:
@@ -13,11 +13,12 @@ Status: **steps 1-4 done; next: step 5 (upload)** (last updated 2026-11-14)
   - Clicks are in `data/alignment.json`, which is in git.
 - Last change (2026-11-14): the fork sits at (1280, 450), 270 frame px above the center (`FORK_RAISE` in `align.py`). Frames were re-rendered and checked, and are ~95% covered on average. The user wanted to see it in the player; its commit may still be pending (check `git status`).
 - Optional touch-ups: #90 (2023-11-22, 1700632809351) and #104 (2024-03-12, 1710267052026) have the fork ~40-50 px off its target (dusk/night shots). Re-click them on `/align` if they jump in the player.
-- Notes for step 5 (upload):
-  - Reuse `catalog.process()` for the web copy, thumbnail, date (filename → EXIF → file time) and sha256. Reject an upload whose sha256 is already in the catalog.
-  - Save into `SpotRiviere/` under the original name. Never overwrite: add a suffix if the name exists.
-  - Then open `/align` on the new photo. After its 2 clicks, re-render; `render_all()` only rebuilds what changed. Every frame is rebuilt if the new photo becomes the widest shot (new reference length) or shifts the mean angle.
-  - `catalog.build()` currently re-reads every file. That is fine at this size (~5 s), but an incremental add would be nicer.
+- Step 5 (upload) as built:
+  - Player: an "Upload" button (file picker) or drop files anywhere on the page. One request per file, with a status line for each (added / already there / refused). Then "Align N new photos →" opens `/align?ids=<id>,<id>`.
+  - `/align?ids=...`: starts on the new photos and marks them "new" in the strip. Enter/S steps through them only. After the last one, the frames are rendered automatically, then "See them in the player →" opens `/?at=<id>`.
+  - Server: `POST /api/upload` → `catalog.add_upload()`. Checks the extension (jpg/png/webp/tif) and fully decodes the image, then rejects it if its sha256 is already in the catalog (409, names the original). Writes into `SpotRiviere/` with `open(..., "xb")`, so nothing is ever overwritten; a taken name gets a `-2` suffix, which the date regexes accept. The browser's `lastModified` becomes the file time, the last date fallback after filename and EXIF. The catalog entry is added incrementally (no full rebuild).
+  - Not done: HEIC (Pillow has no decoder here); an upload never aligned stays out of the player, but shows as "to do" on `/align`.
+  - Testing without touching the real data: a launcher that points `catalog`/`align`/`app` paths at a scratch copy (it must patch at import time, since the worker processes are started with forkserver and re-import it).
 - Possible extras, not planned yet: MP4 export of the frames with ffmpeg; pytest tests for date parsing and the alignment math.
 
 ### Code map
@@ -75,6 +76,7 @@ Fully automatic alignment was ruled out: in summer the leaves hide the branch, t
 - **Built 2026-11-14** in `static/player.html`: a range input laid over a strip of ticks (one per photo) with year labels. A date bubble follows the handle while dragging, and dragging shows the photo at once (no fade). Playback pauses during a drag and resumes after. The "Spacing" select (even / real time) is saved in localStorage; real time snaps to the nearest photo and shows the gaps between visits (e.g. most of 2025). Keys: ← → (also ↑ ↓), Home, End, with a short fade (≤ 0.25 s). Fast repeated presses add up, because steps count from the last requested frame (`target`), not from the frame on screen (`cur`).
 
 ### 5. Upload
+- **Built 2026-11-14** (details in "Resume here").
 - Drag-and-drop and a file picker, sent to the Flask endpoint.
 - The server saves the original into `SpotRiviere/`, opens it on the alignment page for its 2 clicks, then generates its aligned web copy, updates the catalog, and the page refreshes the timeline.
 - Reject files that aren't images and duplicates (based on a hash of the file contents).

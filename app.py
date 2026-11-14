@@ -6,9 +6,11 @@ Run: .venv/bin/python app.py   ->  http://localhost:5000
 from flask import Flask, abort, jsonify, request, send_from_directory
 
 import align
+import catalog
 from catalog import CACHE_DIR, ROOT
 
 app = Flask(__name__, static_folder=None)
+app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # one photo per request
 STATIC_DIR = ROOT / "static"
 
 
@@ -89,6 +91,36 @@ def api_set_alignment(photo_id):
         if value["fork"] == value["point"]:
             abort(400, "fork and point must differ")
     return jsonify(clicks=align.set_alignment(photo_id, value))
+
+
+@app.post("/api/upload")
+def api_upload():
+    """One photo per request (form field "file", optional "lastModified" in ms).
+
+    201 {entry} when added, 409 {error:"duplicate", duplicate_of} when the same
+    file is already in the catalog, 400 {error:"invalid"} otherwise.
+    """
+    f = request.files.get("file")
+    if f is None:
+        return jsonify(error="invalid", message="no file sent"), 400
+    modified = request.form.get("lastModified", type=float)
+    try:
+        entry = catalog.add_upload(f.filename, f.read(), modified / 1000 if modified else None)
+    except catalog.DuplicateError as exc:
+        return jsonify(
+            error="duplicate",
+            message=str(exc),
+            duplicate_of=exc.entry["id"],
+            date=exc.entry["date"],
+        ), 409
+    except catalog.UploadError as exc:
+        return jsonify(error="invalid", message=str(exc)), 400
+    return jsonify(entry=entry), 201
+
+
+@app.errorhandler(413)
+def too_large(_exc):
+    return jsonify(error="invalid", message="file too large (max 100 MB)"), 413
 
 
 @app.post("/api/render")
